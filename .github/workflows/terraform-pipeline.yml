@@ -13,8 +13,8 @@ env:
     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
 jobs:
-    Set-Terraform:
-        name: Initialise Terraform
+    Build-Infra:
+        name: Terraform CICD
         runs-on: Ubuntu-latest
         steps:
           - name: Checkout
@@ -33,13 +33,7 @@ jobs:
             id: init
             run: terraform init
             working-directory: ./TerraformScripts
-    Terraform-Plan:
-        name: Terraform Plan
-        needs: Set-Terraform
-        runs-on: Ubuntu-latest
-        steps:
-          - name: Set up Terraform
-            uses: hashicorp/setup-terraform@v2
+
         # This Step is only executed if the name of the Branch is either Main or starts with feature
           - name: Terraform Plan
             id: plan
@@ -47,36 +41,30 @@ jobs:
             run: terraform plan
             working-directory: ./TerraformScripts
             
-        # This Step Requires Approval from owner or maintainer whom has the required Github token to proceed further 
-          # - name: Manual Approval
-          #   if: github.event_name == 'push' && github.ref_name == 'feature/TDP-264'
-          #   uses: trstringer/manual-approval@v1
-          #   with:
-          #     approvers: darey-io
-          #     secret: ${{ secrets.GITHUB_TOKEN }}
-          #     minimum-approvals: 1
-          #     issue-title: "Executing Terraform Apply"
-          #     issue-body: "Please approve or deny the Terraform Apply"
-    Terraform-Apply:
-        name: Terraform Plan
-        needs: Terraform-Plan
-        environment:
-          name: production
-        runs-on: Ubuntu-latest
-        steps:
-          - name: Set up Terraform
-            uses: hashicorp/setup-terraform@v2
+        # # This Step Requires Approval from owner or maintainer whom has the required Github token to proceed further 
+        #   - name: Manual Approval
+        #     if: github.event_name == 'push' && github.ref_name == 'feature/TDP-264'
+        #     uses: trstringer/manual-approval@v1
+        #     with:
+        #       approvers: darey-io
+        #       secret: ${{ secrets.GITHUB_TOKEN }}
+        #       minimum-approvals: 1
+        #       issue-title: "Executing Terraform Apply"
+        #       issue-body: "Please approve or deny the Terraform Apply"
+
           - name: Terraform Apply
             id: apply
-            if: github.ref_name == 'feature/TDP-264' || github.event_name == 'push'
+            if: github.ref_name == 'feature/TDP-264' && (github.event_name == 'push' || steps.approval.outputs.approved == 'true')
+            environment:
+              name: production
             run: |
-              echo "This will execute the Terraform apply. Are you sure you want to proceed (yes/no)"
-              read -r -p "Enter your choice: " choice
-              if[[ "$choice" =~ ^[Yy]$ ]]; then
-                terraform apply --auto-approve
-              else
-              echo "Terraform apply cancelled"
-              fi
+                echo "This will execute the Terraform apply. Are you sure you want to proceed (yes/no)"
+                read -r -p "Enter your choice: " choice
+                if[[ "$choice" =~ ^[Yy]$ ]]; then
+                  terraform apply --auto-approve
+                else
+                echo "Terraform apply cancelled"
+                fi
             working-directory: ./TerraformScripts
           
 
