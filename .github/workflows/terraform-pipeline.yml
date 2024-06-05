@@ -1,0 +1,82 @@
+name: Implement Build Steps in GitHub Actions Workflow for Terraform Plan and apply
+on:
+    push:
+        branches:
+            - main
+            - feature/*
+            
+permissions:
+  contents: write
+env:
+    AWS_REGION: eu-west-1
+    AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+jobs:
+    Build-Infra:
+        name: Terraform CICD
+        runs-on: Ubuntu-latest
+        steps:
+          - name: Checkout
+            uses: actions/checkout@v2
+
+          - name: Set up Terraform
+            uses: hashicorp/setup-terraform@v2
+
+        # This Step moves the AWS credentials to the Github Environment So Terraform Can Automatically Identify the Provider is AWS
+          - name: Set AWS Credentials
+            run: |
+                echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY }}" >> $GITHUB_ENV
+                echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
+
+          - name: Terraform Init
+            id: init
+            run: terraform init
+            working-directory: ./TerraformScripts
+
+          - name: Terraform Validate
+            id: validate
+            run: terraform validate
+            working-directory: ./TerraformScripts
+
+        # This Step is only executed if the name of the Branch is either Main or starts with feature
+          - name: Terraform Plan
+            id: plan
+            if: github.ref_name == 'main' || startsWith(github.ref_name, 'feature/')
+            run: terraform plan
+            working-directory: ./TerraformScripts
+            
+   # This Job will only be executed after a Reviewer has granted approval for deployment to Sandbox Environment
+    Terraform-Apply:
+      name: Terraform Apply
+      environment:
+        name: sandbox
+      needs: Build-Infra
+      runs-on: Ubuntu-latest
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v2
+
+        - name: Set up Terraform
+          uses: hashicorp/setup-terraform@v2
+
+        # This Step moves the AWS credentials to the Github Environment So Terraform Can Automatically Identify the Provider is AWS
+        - name: Set AWS Credentials
+          run: |
+            echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY }}" >> $GITHUB_ENV
+            echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
+
+        - name: Terraform Init
+          id: init
+          run: terraform init
+          working-directory: ./TerraformScripts
+
+        # This Step is only executed if the name of the Branch is either Main or starts with feature
+        - name: Terraform Apply
+          id: apply
+          if: github.ref_name == 'main' && github.event_name == 'push'
+          run: terraform apply --auto-approve
+          working-directory: ./TerraformScripts
+
+          
+
